@@ -36,7 +36,7 @@ std::shared_ptr< Aws::Http::HttpResponse > ESExecDirect(void* es_conn,
                                                         const char* statement,
                                                         const char* fetch_size);
 std::shared_ptr< Aws::Http::HttpResponse > ESSendCursorQuery(
-    void* es_conn, const char* cursor);
+    void* es_conn, const char* cursor, const char* fetch_size);
 void ESAwsHttpResponseToString(
     void* es_conn, std::shared_ptr< Aws::Http::HttpResponse > response,
     std::string& output);

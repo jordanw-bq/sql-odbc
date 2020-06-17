@@ -86,19 +86,26 @@ RETCODE SQL_API ESAPI_Execute(HSTMT hstmt) {
 
 RETCODE SQL_API ESAPI_ExecDirect(HSTMT hstmt, const SQLCHAR *stmt_str,
                                  SQLINTEGER stmt_sz, BOOL commit) {
+    MYLOG(ES_WARNING, "%s\n", "Enter ESAPI_ExecDirect");
     if (hstmt == NULL)
         return SQL_ERROR;
 
     // We know cursor is not open at this point
     StatementClass *stmt = (StatementClass *)hstmt;
+    MYLOG(ES_WARNING, "%s\n", "Start PrepareStatement");
     RETCODE ret = PrepareStatement(stmt, stmt_str, stmt_sz);
-    if (ret != SQL_SUCCESS)
+    if (ret != SQL_SUCCESS) {
+        MYLOG(ES_WARNING, "!! Prepare Not success (%d)\n", ret);
         return ret;
+    }
 
     // Execute statement
+    MYLOG(ES_WARNING, "%s\n", "Start ExecuteStatement");
     ret = ExecuteStatement(hstmt, commit);
-    if (ret != SQL_SUCCESS)
+    if (ret != SQL_SUCCESS) {
+        MYLOG(ES_WARNING, "!! Execute Not success (%d)\n", ret);
         return ret;
+    }
     stmt->prepared = NOT_PREPARED;
     return ret;
 }

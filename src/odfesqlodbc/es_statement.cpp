@@ -20,6 +20,7 @@
 #include <aws/core/http/HttpClient.h>
 
 #include <condition_variable>
+#include <future>
 #include <thread>
 
 #include "environ.h"  // Critical section for statment
@@ -27,7 +28,6 @@
 #include "es_helper.h"
 #include "es_result_queue.h"
 #include "misc.h"
-#include <future>
 
 extern "C" void *common_cs;
 
@@ -76,7 +76,7 @@ class ESResultContext {
     ESResultContext();
     ~ESResultContext();
     SQLRETURN ExecuteQuery(StatementClass *stmt);
-    ESResult* GetResult();
+    ESResult *GetResult();
     void ExecuteCursorQueries(StatementClass *stmt, const char *_cursor);
 
    private:
@@ -163,19 +163,34 @@ void ESResultContext::ConstructESResult(ESResult &result) {
     if (result.es_result_doc.has("cursor")) {
         result.cursor = result.es_result_doc["cursor"].as_string();
     }
+    if (result.es_result_doc.has("size")) {
+        std::string msg =
+            "Size of result set: "
+            + std::to_string(result.es_result_doc["size"].as_int());
+        LogMsg(ES_WARNING, msg.c_str());
+    }
+    if (result.es_result_doc.has("total")) {
+        std::string msg =
+            "Total rows in table: "
+            + std::to_string(result.es_result_doc["total"].as_int());
+        LogMsg(ES_WARNING, msg.c_str());
+    }
     result.command_type = "SELECT";
     result.num_fields = (uint16_t)schema_array.size();
 }
 
 SQLRETURN ESResultContext::ExecuteQuery(StatementClass *stmt) {
+    // MYLOG(ES_WARNING, "%s\n", "ExecuteQuery");
     if (stmt == NULL)
         return SQL_ERROR;
 
     // Send command
     ConnectionClass *conn = SC_get_conn(stmt);
 
+    // MYLOG(ES_WARNING, "%s\n", "-- Starting ESExecDirect");
     std::shared_ptr< Aws::Http::HttpResponse > response =
         ESExecDirect(conn->esconn, stmt->statement, conn->connInfo.fetch_size);
+    // MYLOG(ES_WARNING, "%s\n", "== Got response from ESExecDirect");
 
     // Convert body from Aws IOStream to string
     ESResult *result = new ESResult;
@@ -251,16 +266,24 @@ void ESResultContext::ExecuteCursorQueries(StatementClass *stmt,
                 [&]() { return !m_result_queue.IsFull(); });
 
             std::shared_ptr< Aws::Http::HttpResponse > response =
-                ESSendCursorQuery(conn->esconn, cursor.c_str());
+                ESSendCursorQuery(conn->esconn, cursor.c_str(),
+                                  conn->connInfo.fetch_size);
 
             ESResult *es_result = new ESResult;
             ESAwsHttpResponseToString(conn, response, es_result->result_json);
             PrepareCursorResult(*es_result);
-            if (es_result->es_result_doc.has("cursor")) {
+            bool datarows_empty = es_result->es_result_doc["datarows"].empty();
+            bool has_cursor = es_result->es_result_doc.has("cursor");
+            if (has_cursor && !datarows_empty) {
                 cursor = es_result->es_result_doc["cursor"].as_string();
                 es_result->cursor =
                     es_result->es_result_doc["cursor"].as_string();
-            } else {
+            } else if (datarows_empty) {
+                LogMsg(ES_WARNING, "000 empty datarows");
+                SendCloseCursorRequest(conn->esconn, cursor);
+                cursor.clear();
+            } else if (!has_cursor) {
+                LogMsg(ES_WARNING, "xxx no cursor");
                 SendCloseCursorRequest(conn->esconn, cursor);
                 cursor.clear();
             }
@@ -270,7 +293,7 @@ void ESResultContext::ExecuteCursorQueries(StatementClass *stmt,
                 LogMsg(ES_ERROR, "Failed to add result in queue");
             }
 
-             // Unlock result queue
+            // Unlock result queue
             lock_queue.unlock();
             m_condition_variable.notify_one();
         }
@@ -291,7 +314,7 @@ void GetResultContext(StatementClass *stmt) {
     }
 }
 
-ESResult* ESResultContext::GetResult() {
+ESResult *ESResultContext::GetResult() {
     // Lock result queue
     std::unique_lock< std::mutex > lock_queue(m_mutex);
     auto now = std::chrono::system_clock::now();
@@ -315,6 +338,8 @@ ESResult* ESResultContext::GetResult() {
 
 RETCODE ExecuteStatement(StatementClass *stmt, BOOL commit) {
     CSTR func = "ExecuteStatement";
+    // MYLOG(ES_WARNING, "%s\n", func);
+    // MYLOG(ES_WARNING, "%s\n", func);
     int func_cs_count = 0;
     ConnectionClass *conn = SC_get_conn(stmt);
     CONN_Status oldstatus = conn->status;
@@ -341,7 +366,9 @@ RETCODE ExecuteStatement(StatementClass *stmt, BOOL commit) {
     ENTER_INNER_CONN_CS(conn, func_cs_count);
 
     if (stmt->result_context == NULL) {
+        // MYLOG(ES_WARNING, "%s\n", "-- Getting context");
         GetResultContext(stmt);
+        // MYLOG(ES_WARNING, "%s\n", "== Finished getting context");
     }
 
     if (conn->status == CONN_EXECUTING) {
@@ -358,7 +385,9 @@ RETCODE ExecuteStatement(StatementClass *stmt, BOOL commit) {
 
     conn->status = CONN_EXECUTING;
 
+    // MYLOG(ES_WARNING, "%s\n", "-- SendQuery GetResult");
     QResultClass *res = SendQueryGetResult(stmt, commit);
+    // MYLOG(ES_WARNING, "%s\n", "== Done SQGR");
     if (!res) {
         std::string es_conn_err = GetErrorMsg(SC_get_conn(stmt)->esconn);
         std::string es_parse_err = GetResultParserError();
@@ -494,6 +523,7 @@ SQLRETURN GetNextResultSet(StatementClass *stmt) {
 
 RETCODE RePrepareStatement(StatementClass *stmt) {
     CSTR func = "RePrepareStatement";
+    MYLOG(ES_WARNING, "%s\n", func);
     RETCODE result = SC_initialize_and_recycle(stmt);
     if (result != SQL_SUCCESS)
         return result;
@@ -515,6 +545,7 @@ RETCODE RePrepareStatement(StatementClass *stmt) {
 RETCODE PrepareStatement(StatementClass *stmt, const SQLCHAR *stmt_str,
                          SQLINTEGER stmt_sz) {
     CSTR func = "PrepareStatement";
+    MYLOG(ES_WARNING, "%s\n", func);
     RETCODE result = SC_initialize_and_recycle(stmt);
     if (result != SQL_SUCCESS)
         return result;
@@ -554,6 +585,7 @@ QResultClass *SendQueryGetResult(StatementClass *stmt, BOOL commit) {
     ESResultContext *result_context =
         static_cast< ESResultContext * >(stmt->result_context);
 
+    // MYLOG(ES_WARNING, "%s\n", "-- Executing Query");
     if (result_context->ExecuteQuery(stmt) != 0) {
         QR_Destructor(res);
         return NULL;
@@ -561,6 +593,7 @@ QResultClass *SendQueryGetResult(StatementClass *stmt, BOOL commit) {
     res->rstatus = PORES_COMMAND_OK;
 
     // Get ESResult
+    // MYLOG(ES_WARNING, "%s\n", "-- Getting Result");
     ESResult *es_res = result_context->GetResult();
     if (es_res == NULL) {
         QR_Destructor(res);
@@ -622,7 +655,8 @@ void ClearESResult(void *es_result) {
 
 void ClearResultContext(void *result_context_) {
     if (result_context_ != NULL) {
-        ESResultContext *result_context = static_cast< ESResultContext * >(result_context_);
+        ESResultContext *result_context =
+            static_cast< ESResultContext * >(result_context_);
         result_context->~ESResultContext();
     }
 }

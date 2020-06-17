@@ -188,11 +188,41 @@ void ESCommunication::InitializeConnection() {
     m_http_client = Aws::Http::CreateHttpClient(config);
 }
 
+#include <thread>
+
 std::shared_ptr< Aws::Http::HttpResponse > ESCommunication::IssueRequest(
     const std::string& endpoint, const Aws::Http::HttpMethod request_type,
     const std::string& content_type, const std::string& query,
     const std::string& fetch_size, const std::string& cursor) {
     // Generate http request
+    // char info_buffer[1024];
+    // if (!(query.empty())) {
+    //     sprintf(info_buffer, "%s: %s", "Query", query.c_str());
+    //     // } else if (!(cursor.empty())) {
+    //     //     sprintf(info_buffer, "%s: %s", "Cursor", cursor.substr(0,
+    //     //     128).c_str());
+    // } else {
+    //     sprintf(info_buffer, "No info");
+    // }
+
+    char msg_buffer[1024];
+    sprintf(msg_buffer,
+            "--> Fetching for THREAD 0x%zx\n"
+            "====================== Endpoint: %s\n"
+            "====================== Request Type: %d\n"
+            "====================== Content Type: %s\n"
+            "====================== Fetch Size: %s\n"
+            "====================== %s",
+            std::hash< std::thread::id >{}(std::this_thread::get_id()),
+            endpoint.c_str(), request_type, content_type.c_str(),
+            fetch_size.c_str(), "Test");
+    // std::string msg =
+    //     "=============================================\n--> Fetching "
+    //     + thread_id;
+    // + fetch_size + "rows <--\nccc Cursor["
+    // + cursor.substr(cursor.length() - 25, 25) + "]\n??? Query: " + query
+    // + "\n=============================================";
+    LogMsg(ES_WARNING, (char*)msg_buffer);
     std::shared_ptr< Aws::Http::HttpRequest > request =
         Aws::Http::CreateHttpRequest(
             Aws::String(
@@ -235,15 +265,16 @@ std::shared_ptr< Aws::Http::HttpResponse > ESCommunication::IssueRequest(
         request->SetAuthorization("Basic " + hashed_userpw);
     } else if (m_rt_opts.auth.auth_type == AUTHTYPE_IAM) {
         std::shared_ptr< Aws::Auth::ProfileConfigFileAWSCredentialsProvider >
-            credential_provider =
-                Aws::MakeShared< Aws::Auth::ProfileConfigFileAWSCredentialsProvider >(
-                    ALLOCATION_TAG.c_str(), ESODBC_PROFILE_NAME.c_str());
+            credential_provider = Aws::MakeShared<
+                Aws::Auth::ProfileConfigFileAWSCredentialsProvider >(
+                ALLOCATION_TAG.c_str(), ESODBC_PROFILE_NAME.c_str());
         Aws::Client::AWSAuthV4Signer signer(credential_provider,
                                             SERVICE_NAME.c_str(),
                                             m_rt_opts.auth.region.c_str());
         signer.SignRequest(*request);
     }
 
+    // LogMsg(ES_WARNING, "!!!!!!!! Request is ready");
     // Issue request and return response
     return m_http_client->MakeRequest(request);
 }
@@ -335,6 +366,8 @@ bool ESCommunication::EstablishConnection() {
 
 std::shared_ptr< Aws::Http::HttpResponse > ESCommunication::ExecDirect(
     const char* query, const char* fetch_size_) {
+    // LogMsg(ES_WARNING, "ESComm::ExecDirect");
+    // LogMsg(ES_WARNING, query);
     if (!query) {
         m_error_message = "Query is NULL";
         LogMsg(ES_ERROR, m_error_message.c_str());
@@ -352,9 +385,11 @@ std::shared_ptr< Aws::Http::HttpResponse > ESCommunication::ExecDirect(
     LogMsg(ES_DEBUG, msg.c_str());
 
     // Issue request
+    LogMsg(ES_WARNING, "!! -- Issuing request");
     std::shared_ptr< Aws::Http::HttpResponse > response =
         IssueRequest(SQL_ENDPOINT_FORMAT_JDBC, Aws::Http::HttpMethod::HTTP_POST,
                      ctype, statement, fetch_size);
+    LogMsg(ES_WARNING, "!! == Got request");
 
     // Validate response
     if (response == nullptr) {
@@ -368,12 +403,13 @@ std::shared_ptr< Aws::Http::HttpResponse > ESCommunication::ExecDirect(
 }
 
 std::shared_ptr< Aws::Http::HttpResponse > ESCommunication::SendCursorQuery(
-    const char* _cursor) {
+    const char* _cursor, const char* _fetch_size) {
     std::string cursor(_cursor);
+    std::string fetch_size(_fetch_size);
 
     std::shared_ptr< Aws::Http::HttpResponse > response =
         IssueRequest(SQL_ENDPOINT_FORMAT_JDBC, Aws::Http::HttpMethod::HTTP_POST,
-                     ctype, "", "", cursor);
+                     ctype, "", fetch_size, cursor);
 
     if (response == nullptr) {
         m_error_message =

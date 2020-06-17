@@ -247,13 +247,13 @@ RETCODE SQL_API SQLDisconnect(HDBC ConnectionHandle) {
 #ifndef UNICODE_SUPPORTXX
 RETCODE SQL_API SQLExecDirect(HSTMT StatementHandle, SQLCHAR *StatementText,
                               SQLINTEGER TextLength) {
-    if(StatementHandle == NULL)
+    if (StatementHandle == NULL)
         return SQL_ERROR;
     StatementClass *stmt = (StatementClass *)StatementHandle;
 
     if (SC_connection_lost_check(stmt, __FUNCTION__))
         return SQL_ERROR;
-    
+
     // Enter critical
     ENTER_STMT_CS(stmt);
 
@@ -273,11 +273,11 @@ RETCODE SQL_API SQLExecDirect(HSTMT StatementHandle, SQLCHAR *StatementText,
 #endif /* UNICODE_SUPPORTXX */
 
 RETCODE SQL_API SQLExecute(HSTMT StatementHandle) {
-    if(StatementHandle == NULL)
+    if (StatementHandle == NULL)
         return SQL_ERROR;
 
     StatementClass *stmt = (StatementClass *)StatementHandle;
-    MYLOG(ES_TRACE, "entering\n");
+    MYLOG(ES_WARNING, "entering\n");
     if (SC_connection_lost_check(stmt, __FUNCTION__))
         return SQL_ERROR;
 
@@ -467,13 +467,13 @@ RETCODE SQL_API SQLParamData(HSTMT StatementHandle, PTR *Value) {
 #ifndef UNICODE_SUPPORTXX
 RETCODE SQL_API SQLPrepare(HSTMT StatementHandle, SQLCHAR *StatementText,
                            SQLINTEGER TextLength) {
-    if(StatementHandle == NULL)
+    if (StatementHandle == NULL)
         return SQL_ERROR;
 
     CSTR func = "SQLPrepare";
     StatementClass *stmt = (StatementClass *)StatementHandle;
 
-    MYLOG(ES_TRACE, "entering\n");
+    MYLOG(ES_WARNING, "entering\n");
     if (SC_connection_lost_check(stmt, __FUNCTION__))
         return SQL_ERROR;
 
@@ -686,7 +686,7 @@ RETCODE SQL_API SQLTables(HSTMT StatementHandle, SQLCHAR *CatalogName,
     SQLCHAR *ctName = CatalogName, *scName = SchemaName, *tbName = TableName;
     UWORD flag = 0;
 
-    MYLOG(ES_TRACE, "entering\n");
+    MYLOG(ES_WARNING, "entering\n");
     if (SC_connection_lost_check(stmt, __FUNCTION__))
         return SQL_ERROR;
 

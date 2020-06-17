@@ -32,6 +32,9 @@
       <customization name="CAP_ODBC_METADATA_FORCE_LENGTH_AS_PRECISION" value="yes"/>
       <customization name="CAP_ODBC_SUPPRESS_INFO_SCHEMA_TABLES" value="yes"/>
       <customization name="CAP_ODBC_SUPPRESS_PG_TEMP_SCHEMA_TABLES" value="yes"/>
+      <!-- <customization name="CAP_ODBC_SUPPRESS_PREPARED_QUERY_FOR_ALL_COMMAND_QUERIES" value="yes"/> -->
+      <customization name="CAP_ODBC_SUPPRESS_PREPARED_QUERY_FOR_NON_COMMAND_QUERIES" value="yes"/>
+      <customization name="CAP_ODBC_METADATA_SUPPRESS_PREPARED_QUERY" value="yes"/>
       <customization name="CAP_ODBC_METADATA_SUPPRESS_SQLSTATISTICS_API" value="yes"/>
       <customization name="CAP_SUPPORTS_SPLIT_FROM_RIGHT" value="no"/>
       <customization name="CAP_CONNECT_STORED_PROCEDURE" value="no"/>

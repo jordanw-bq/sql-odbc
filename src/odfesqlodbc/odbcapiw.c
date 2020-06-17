@@ -84,7 +84,7 @@ RETCODE SQL_API SQLConnectW(HDBC ConnectionHandle, SQLWCHAR *ServerName,
     RETCODE ret;
     ConnectionClass *conn = (ConnectionClass *)ConnectionHandle;
 
-    MYLOG(ES_TRACE, "entering\n");
+    MYLOG(ES_WARNING, "entering\n");
     ENTER_CONN_CS(conn);
     CC_clear_error(conn);
     CC_set_in_unicode_driver(conn);
@@ -119,7 +119,7 @@ RETCODE SQL_API SQLDriverConnectW(HDBC hdbc, HWND hwnd, SQLWCHAR *szConnStrIn,
     RETCODE ret;
     ConnectionClass *conn = (ConnectionClass *)hdbc;
 
-    MYLOG(ES_TRACE, "entering\n");
+    MYLOG(ES_WARNING, "entering\n");
     ENTER_CONN_CS(conn);
     CC_clear_error(conn);
     CC_set_in_unicode_driver(conn);
@@ -151,8 +151,8 @@ RETCODE SQL_API SQLDriverConnectW(HDBC hdbc, HWND hwnd, SQLWCHAR *szConnStrIn,
             utf8_to_ucs2(szOut, maxlen, szConnStrOut, cbConnStrOutMax);
         if (outlen >= cbConnStrOutMax && NULL != szConnStrOut
             && NULL != pcbConnStrOut) {
-            MYLOG(ES_ALL, "cbConnstrOutMax=%d pcb=%p\n",
-                  cbConnStrOutMax, pcbConnStrOut);
+            MYLOG(ES_ALL, "cbConnstrOutMax=%d pcb=%p\n", cbConnStrOutMax,
+                  pcbConnStrOut);
             if (SQL_SUCCESS == ret) {
                 CC_set_error(conn, CONN_TRUNCATED,
                              "the ConnStrOut is too small", func);
@@ -281,7 +281,8 @@ RETCODE SQL_API SQLDescribeColW(HSTMT StatementHandle,
 
 RETCODE SQL_API SQLExecDirectW(HSTMT StatementHandle, SQLWCHAR *StatementText,
                                SQLINTEGER TextLength) {
-    if(StatementHandle == NULL)
+    MYLOG(ES_WARNING, "entering\n");
+    if (StatementHandle == NULL)
         return SQL_ERROR;
 
     StatementClass *stmt = (StatementClass *)StatementHandle;
@@ -301,7 +302,8 @@ RETCODE SQL_API SQLExecDirectW(HSTMT StatementHandle, SQLWCHAR *StatementText,
     // Execute statement if statement is ready
     RETCODE ret = SQL_ERROR;
     if (!SC_opencheck(stmt, "SQLExecDirectW"))
-        ret = ESAPI_ExecDirect(StatementHandle, (const SQLCHAR *)stxt, (SQLINTEGER)slen, 1);
+        ret = ESAPI_ExecDirect(StatementHandle, (const SQLCHAR *)stxt,
+                               (SQLINTEGER)slen, 1);
 
     // Exit critical
     LEAVE_STMT_CS(stmt);
@@ -378,13 +380,13 @@ RETCODE SQL_API SQLGetInfoW(HDBC ConnectionHandle, SQLUSMALLINT InfoType,
 
 RETCODE SQL_API SQLPrepareW(HSTMT StatementHandle, SQLWCHAR *StatementText,
                             SQLINTEGER TextLength) {
-    if(StatementHandle == NULL)
+    if (StatementHandle == NULL)
         return SQL_ERROR;
 
     CSTR func = "SQLPrepareW";
     StatementClass *stmt = (StatementClass *)StatementHandle;
 
-    MYLOG(ES_TRACE, "entering\n");
+    MYLOG(ES_WARNING, "entering\n");
     if (SC_connection_lost_check(stmt, __FUNCTION__))
         return SQL_ERROR;
 
@@ -400,7 +402,8 @@ RETCODE SQL_API SQLPrepareW(HSTMT StatementHandle, SQLWCHAR *StatementText,
     // Prepare statement if statement is ready
     RETCODE ret = SQL_ERROR;
     if (!SC_opencheck(stmt, func))
-        ret = ESAPI_Prepare(StatementHandle, (const SQLCHAR *)stxt, (SQLINTEGER)slen);
+        ret = ESAPI_Prepare(StatementHandle, (const SQLCHAR *)stxt,
+                            (SQLINTEGER)slen);
 
     // Exit critical
     LEAVE_STMT_CS(stmt);
@@ -526,7 +529,7 @@ RETCODE SQL_API SQLTablesW(HSTMT StatementHandle, SQLWCHAR *CatalogName,
     BOOL lower_id;
     UWORD flag = 0;
 
-    MYLOG(ES_TRACE, "entering\n");
+    MYLOG(ES_WARNING, "entering\n");
     if (SC_connection_lost_check(stmt, __FUNCTION__))
         return SQL_ERROR;
 

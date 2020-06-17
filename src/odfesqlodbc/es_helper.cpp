@@ -76,10 +76,10 @@ std::shared_ptr< Aws::Http::HttpResponse > ESExecDirect(
 }
 
 std::shared_ptr< Aws::Http::HttpResponse > ESSendCursorQuery(
-    void* es_conn, const char* cursor) {
+    void* es_conn, const char* cursor, const char* fetch_size) {
     return es_conn ? static_cast< ESCommunication* >(es_conn)->SendCursorQuery(
-                   cursor)
-               : NULL;
+               cursor, fetch_size)
+                   : NULL;
 }
 
 void ESAwsHttpResponseToString(

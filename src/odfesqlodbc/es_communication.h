@@ -57,7 +57,7 @@ class ESCommunication {
     std::shared_ptr< Aws::Http::HttpResponse > ExecDirect(
         const char* query, const char* fetch_size_);
     std::shared_ptr< Aws::Http::HttpResponse > SendCursorQuery(
-        const char* cursor);
+        const char* cursor, const char* fetch_size_);
     std::string GetClientEncoding();
     bool SetClientEncoding(std::string& encoding);
     bool IsSQLPluginInstalled(const std::string& plugin_response);
@@ -77,7 +77,7 @@ class ESCommunication {
     bool EstablishConnection();
 
     // TODO #35 - Go through and add error messages on exit conditions
-    std::string m_error_message;  
+    std::string m_error_message;
     const std::vector< std::string > m_supported_client_encodings = {"UTF8"};
 
     ConnStatusType m_status;
