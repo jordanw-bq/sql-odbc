@@ -34,6 +34,7 @@ if(APPLE)
 	# Set BUILD_WITH_TESTS to OFF before building installer package for size optimization.
 	option(BUILD_WITH_TESTS "Enable testing" ON)
 else()
+	set(CMAKE_CXX_STANDARD 17)
 	# Use shared libraries for AWS SDK.
 	option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 	# Set BUILD_WITH_TESTS to OFF before building installer package for size optimization.
@@ -41,7 +42,8 @@ else()
 endif()
 
 if(MSVC)
-  add_compile_options(/W4 /WX)
+  # add_compile_options(/W4 /WX)
+  add_compile_options(/W4)
 else()
   add_compile_options(-Wall -Wextra -pedantic -Werror)
 endif()
@@ -112,6 +114,8 @@ add_compile_definitions		(	_SILENCE_TR1_NAMESPACE_DEPRECATION_WARNING
 								_MBCS
 								_CRT_SECURE_NO_DEPRECATE	
 								_USRDLL	
+								_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING
+								_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING
 								# USE_SSL					
 							)
 

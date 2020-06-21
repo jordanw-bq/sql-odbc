@@ -26,7 +26,7 @@ set(					SOURCE_FILES
 							es_utility.cpp			es_communication.cpp	es_connection.cpp			es_odbc.c
 							es_driver_connect.cpp	es_helper.cpp			es_info.cpp					es_parse_result.cpp
 							es_statement.cpp		win_unicode.c			odbcapi.c					odbcapiw.c		
-							es_result_queue.cpp
+							es_result_queue.cpp		es_semaphore.cpp
 	)
 if(WIN32)
 set(SOURCE_FILES ${SOURCE_FILES} dlg_wingui.c setup.c)
@@ -41,7 +41,7 @@ set(					HEADER_FILES
 							misc.h					multibyte.h				mylog.h				es_utility.h
 							resource.h				statement.h				tuple.h				unicode_support.h
 							es_apifunc.h			es_odbc.h				qresult.h			version.h
-							win_setup.h				es_result_queue.h
+							win_setup.h				es_result_queue.h		es_semaphore.h
 	)
 
 # Generate dll (SHARED)

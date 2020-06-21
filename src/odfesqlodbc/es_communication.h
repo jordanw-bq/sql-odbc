@@ -41,6 +41,8 @@
 #include <aws/core/http/HttpClientFactory.h>
 #include <aws/core/http/HttpClient.h>
 #include <aws/core/client/ClientConfiguration.h>
+
+#define QUEUE_TIMEOUT 2000
 // clang-format on
 
 class ESCommunication {
@@ -83,7 +85,7 @@ class ESCommunication {
     void PrepareCursorResult(ESResult& es_result);
 
     // TODO #35 - Go through and add error messages on exit conditions
-    std::string m_error_message;  
+    std::string m_error_message;
     const std::vector< std::string > m_supported_client_encodings = {"UTF8"};
 
     ConnStatusType m_status;

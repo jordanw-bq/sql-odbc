@@ -219,8 +219,9 @@ typedef enum {
     CONNECTION_NEEDED,         /* Internal state: connect() needed */
     CONNECTION_CHECK_WRITABLE, /* Check if we could make a writable connection.
                                 */
-    CONNECTION_CONSUME,    /* Wait for any pending message and consume them. */
-    CONNECTION_GSS_STARTUP /* Negotiating GSSAPI. */
+    CONNECTION_CONSUME,     /* Wait for any pending message and consume them. */
+    CONNECTION_GSS_STARTUP, /* Negotiating GSSAPI. */
+    CONNECTION_DONE_CURSOR
 } ConnStatusType;
 
 // Only expose this to C++ code, this will be passed through the C interface as
@@ -231,11 +232,11 @@ typedef enum {
 #ifdef __APPLE__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-parameter"
-#endif // __APPLE__
+#endif  // __APPLE__
 #include "rabbit.hpp"
 #ifdef __APPLE__
 #pragma clang diagnostic pop
-#endif // __APPLE__
+#endif  // __APPLE__
 
 #include <string>
 #include <vector>
