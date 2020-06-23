@@ -31,7 +31,6 @@
 #include "statement.h"
 
 typedef std::vector< std::pair< std::string, OID > > schema_type;
-typedef rabbit::array json_arr;
 typedef json_arr::iterator::result_type json_arr_it;
 
 bool _CC_from_ESResult(QResultClass *q_res, ConnectionClass *conn,
@@ -40,10 +39,10 @@ bool _CC_Metadata_from_ESResult(QResultClass *q_res, ConnectionClass *conn,
                                 const char *cursor, ESResult &es_result);
 bool _CC_No_Metadata_from_ESResult(QResultClass *q_res, ConnectionClass *conn,
                                    const char *cursor, ESResult &es_result);
-void GetSchemaInfo(schema_type &schema, json_doc &es_result_doc);
+void GetSchemaInfo(schema_type &schema, json_arr &schema_arr);
 bool AssignColumnHeaders(const schema_type &doc_schema, QResultClass *q_res,
-                         const ESResult &es_result);
-bool AssignTableData(json_doc &es_result_doc, QResultClass *q_res,
+                         const std::vector< ColumnInfo > &es_result);
+bool AssignTableData(json_arr &es_result_data, QResultClass *q_res,
                      size_t doc_schema_size, ColumnInfoClass &fields);
 bool AssignRowData(const json_arr_it &row, size_t row_schema_size,
                    QResultClass *q_res, ColumnInfoClass &fields,
@@ -113,14 +112,17 @@ std::string GetResultParserError() {
 
 BOOL CC_from_ESResult(QResultClass *q_res, ConnectionClass *conn,
                       const char *cursor, ESResult &es_result) {
+    MYLOG(ES_WARNING, "CC_from_ESREsult\n");
     ClearError();
     return _CC_from_ESResult(q_res, conn, cursor, es_result) ? TRUE : FALSE;
 }
 
 BOOL CC_Metadata_from_ESResult(QResultClass *q_res, ConnectionClass *conn,
                                const char *cursor, ESResult &es_result) {
+    MYLOG(ES_WARNING, "CC_Metadata_from_ESREsult\n");
     ClearError();
-    return _CC_Metadata_from_ESResult(q_res, conn, cursor, es_result) ? TRUE : FALSE;
+    return _CC_Metadata_from_ESResult(q_res, conn, cursor, es_result) ? TRUE
+                                                                      : FALSE;
 }
 
 BOOL CC_No_Metadata_from_ESResult(QResultClass *q_res, ConnectionClass *conn,
@@ -131,10 +133,10 @@ BOOL CC_No_Metadata_from_ESResult(QResultClass *q_res, ConnectionClass *conn,
                : FALSE;
 }
 
-BOOL CC_Append_Table_Data(json_doc &es_result_doc, QResultClass *q_res,
+BOOL CC_Append_Table_Data(json_arr &es_result_data, QResultClass *q_res,
                           size_t doc_schema_size, ColumnInfoClass &fields) {
     ClearError();
-    return AssignTableData(es_result_doc, q_res, doc_schema_size, fields)
+    return AssignTableData(es_result_data, q_res, doc_schema_size, fields)
                ? TRUE
                : FALSE;
 }
@@ -147,13 +149,13 @@ bool _CC_No_Metadata_from_ESResult(QResultClass *q_res, ConnectionClass *conn,
 
     try {
         schema_type doc_schema;
-        GetSchemaInfo(doc_schema, es_result.es_result_doc);
+        GetSchemaInfo(doc_schema, *es_result.schema.get());
 
         SQLULEN starting_cached_rows = q_res->num_cached_rows;
 
         // Assign table data and column headers
-        if (!AssignTableData(es_result.es_result_doc, q_res, doc_schema.size(),
-                             *(q_res->fields)))
+        if (!AssignTableData(*es_result.datarows.get(), q_res,
+                             doc_schema.size(), *(q_res->fields)))
             return false;
 
         // Update fields of QResult to reflect data written
@@ -184,19 +186,24 @@ bool _CC_Metadata_from_ESResult(QResultClass *q_res, ConnectionClass *conn,
 
     QR_set_conn(q_res, conn);
     try {
+        MYLOG(ES_WARNING, "... Trying to get MD from result\n");
         schema_type doc_schema;
-        GetSchemaInfo(doc_schema, es_result.es_result_doc);
+        MYLOG(ES_WARNING, "... GetSchemaInfo\n");
+        GetSchemaInfo(doc_schema, *es_result.schema.get());
 
         // Assign table data and column headers
-        if (!AssignColumnHeaders(doc_schema, q_res, es_result))
+        MYLOG(ES_WARNING, "... AssignColumnHeaders\n");
+        if (!AssignColumnHeaders(doc_schema, q_res, es_result.column_info))
             return false;
 
+        MYLOG(ES_WARNING, "... set QR properties\n");
         // Set command type and cursor name
         QR_set_command(q_res, es_result.command_type.c_str());
         QR_set_cursor(q_res, cursor);
         if (cursor == NULL)
             QR_set_reached_eof(q_res);
 
+        MYLOG(ES_WARNING, "... All done! Returning true\n");
         // Return true (success)
         return true;
     } catch (const rabbit::type_mismatch &e) {
@@ -209,6 +216,7 @@ bool _CC_Metadata_from_ESResult(QResultClass *q_res, ConnectionClass *conn,
         SetError("Unknown exception thrown in _CC_Metadata_from_ESResult.");
     }
 
+    MYLOG(ES_WARNING, "... Problem, returning false\n");
     // Exception occurred, return false (error)
     return false;
 }
@@ -222,13 +230,13 @@ bool _CC_from_ESResult(QResultClass *q_res, ConnectionClass *conn,
     QR_set_conn(q_res, conn);
     try {
         schema_type doc_schema;
-        GetSchemaInfo(doc_schema, es_result.es_result_doc);
+        GetSchemaInfo(doc_schema, *es_result.schema.get());
         SQLULEN starting_cached_rows = q_res->num_cached_rows;
 
         // Assign table data and column headers
-        if ((!AssignColumnHeaders(doc_schema, q_res, es_result))
-            || (!AssignTableData(es_result.es_result_doc, q_res, doc_schema.size(),
-                                 *(q_res->fields))))
+        if ((!AssignColumnHeaders(doc_schema, q_res, es_result.column_info))
+            || (!AssignTableData(*es_result.datarows.get(), q_res,
+                                 doc_schema.size(), *(q_res->fields))))
             return false;
 
         // Update fields of QResult to reflect data written
@@ -251,9 +259,10 @@ bool _CC_from_ESResult(QResultClass *q_res, ConnectionClass *conn,
     return false;
 }
 
-void GetSchemaInfo(schema_type &schema, json_doc &es_result_doc) {
-    json_arr schema_arr = es_result_doc[JSON_KW_SCHEMA];
+void GetSchemaInfo(schema_type &schema, json_arr &schema_arr) {
     for (auto it : schema_arr) {
+        MYLOG(ES_WARNING, "GetSchemaInfo Column: %s\n",
+              it[JSON_KW_NAME].as_string().c_str());
         auto mapped_oid = type_to_oid_map.find(it[JSON_KW_TYPE].as_string());
         OID type_oid = (mapped_oid == type_to_oid_map.end())
                            ? SQL_WVARCHAR
@@ -264,27 +273,30 @@ void GetSchemaInfo(schema_type &schema, json_doc &es_result_doc) {
 }
 
 bool AssignColumnHeaders(const schema_type &doc_schema, QResultClass *q_res,
-                         const ESResult &es_result) {
+                         const std::vector< ColumnInfo > &column_info) {
     // Verify server_info size matches the schema size
-    if (es_result.column_info.size() != doc_schema.size())
+    if (column_info.size() != doc_schema.size()) {
+        MYLOG(ES_WARNING, "Column info size != doc_schema size (%zd != %zd)\n",
+              column_info.size(), doc_schema.size());
         return false;
+    }
 
     // Allocte memory for column fields
-    QR_set_num_fields(q_res, (uint16_t)es_result.column_info.size());
-    if (QR_get_fields(q_res)->coli_array == NULL)
+    QR_set_num_fields(q_res, (uint16_t)column_info.size());
+    if (QR_get_fields(q_res)->coli_array == NULL) {
+        MYLOG(ES_WARNING, "Coli_array == NULL\n");
         return false;
-
+    }
     // Assign column info
     for (size_t i = 0; i < doc_schema.size(); i++) {
         auto type_size_ptr = oid_to_size_map.find(doc_schema[i].second);
         int16_t type_size = (type_size_ptr == oid_to_size_map.end())
                                 ? ES_ADT_UNSET
                                 : type_size_ptr->second;
-        CI_set_field_info(QR_get_fields(q_res), (int)i,
-                          doc_schema[i].first.c_str(), doc_schema[i].second,
-                          type_size, es_result.column_info[i].length_of_str,
-                          es_result.column_info[i].relation_id,
-                          es_result.column_info[i].attribute_number);
+        CI_set_field_info(
+            QR_get_fields(q_res), (int)i, doc_schema[i].first.c_str(),
+            doc_schema[i].second, type_size, column_info[i].length_of_str,
+            column_info[i].relation_id, column_info[i].attribute_number);
         QR_set_rstatus(q_res, PORES_FIELDS_OK);
     }
     q_res->num_fields = CI_get_num_fields(QR_get_fields(q_res));
@@ -294,10 +306,9 @@ bool AssignColumnHeaders(const schema_type &doc_schema, QResultClass *q_res,
 
 // Responsible for looping through rows, allocating tuples and passing rows for
 // assignment
-bool AssignTableData(json_doc &es_result_doc, QResultClass *q_res,
+bool AssignTableData(json_arr &es_result_data, QResultClass *q_res,
                      size_t doc_schema_size, ColumnInfoClass &fields) {
     // Assign row info
-    json_arr es_result_data = es_result_doc[JSON_KW_DATAROWS];
     if (es_result_data.size() == 0)
         return true;
 

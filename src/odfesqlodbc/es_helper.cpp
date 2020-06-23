@@ -79,7 +79,14 @@ void ESSendCursorQueries(void* es_conn, const char* cursor) {
 }
 
 ESResult* ESGetResult(void* es_conn) {
+    MYLOG(ES_WARNING, "%s\n", "ii ESGetResult");
     return es_conn ? static_cast< ESCommunication* >(es_conn)->PopResult()
+                   : NULL;
+}
+
+ESResult* ESPeekResult(void* es_conn) {
+    MYLOG(ES_WARNING, "%s\n", "ii ESPeekResult");
+    return es_conn ? static_cast< ESCommunication* >(es_conn)->PeekResult()
                    : NULL;
 }
 
@@ -105,7 +112,7 @@ void ESClearResult(ESResult* es_result) {
 }
 
 void ESClearQueue(void* es_conn) {
-     static_cast< ESCommunication* >(es_conn)->ClearQueue();
+    static_cast< ESCommunication* >(es_conn)->ClearQueue();
 }
 
 // This class provides a cross platform way of entering critical sections

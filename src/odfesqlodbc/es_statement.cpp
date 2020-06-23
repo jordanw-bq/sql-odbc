@@ -65,6 +65,7 @@ RETCODE ExecuteStatement(StatementClass *stmt, BOOL commit) {
 
     conn->status = CONN_EXECUTING;
 
+    MYLOG(ES_WARNING, "%s\n", "ExecuteStatement SendQueryGetResult");
     QResultClass *res = SendQueryGetResult(stmt, commit);
     if (!res) {
         std::string es_conn_err = GetErrorMsg(SC_get_conn(stmt)->esconn);
@@ -143,7 +144,10 @@ RETCODE ExecuteStatement(StatementClass *stmt, BOOL commit) {
 
     // This will commit results for SQLExecDirect and will not commit
     // results for SQLPrepare since only metadata is required for SQLPrepare
-    if (commit) {
+    if (commit && res->server_cursor_id != NULL) {
+        MYLOG(ES_WARNING, "%s\n",
+              "Committing (should get next result set here?)");
+        // MYLOG(ES_WARNING, "%s\n", "ExecuteStatement GetNextResultSet");
         GetNextResultSet(stmt);
     }
 
@@ -162,27 +166,31 @@ SQLRETURN GetNextResultSet(StatementClass *stmt) {
     }
 
     SQLSMALLINT total_columns = -1;
-    if (!SQL_SUCCEEDED(SQLNumResultCols(stmt, &total_columns)) || 
-       (total_columns == -1)) {
+    if (!SQL_SUCCEEDED(SQLNumResultCols(stmt, &total_columns))
+        || (total_columns == -1)) {
         return SQL_ERROR;
     }
 
-    ESResult *es_res = ESGetResult(conn->esconn);
-    while (es_res != NULL) {
+    do {
+        MYLOG(ES_WARNING, "%s\n", "ff GetNextResultSet ESGetResult");
+        ESResult *es_res = ESGetResult(conn->esconn);
+
         // Save server cursor id to fetch more pages later
-        if (es_res->es_result_doc.has("cursor")) {
-            QR_set_server_cursor_id(
-                q_res, es_res->es_result_doc["cursor"].as_string().c_str());
+        if (!es_res->cursor.empty()) {
+            MYLOG(ES_WARNING, "Cursor: %s\n", es_res->cursor.c_str());
+            QR_set_server_cursor_id(q_res, es_res->cursor.c_str());
         } else {
+            MYLOG(ES_WARNING, "%s\n", "No cursor...");
             QR_set_server_cursor_id(q_res, NULL);
         }
 
-        // Responsible for looping through rows, allocating tuples and 
+        // Responsible for looping through rows, allocating tuples and
         // appending these rows in q_result
-        CC_Append_Table_Data(es_res->es_result_doc, q_res, total_columns,
+        // MYLOG(ES_WARNING, "%s\n", "ff GetNextResultSet Getting another
+        // result");
+        CC_Append_Table_Data(*es_res->datarows.get(), q_res, total_columns,
                              *(q_res->fields));
-        es_res = ESGetResult(conn->esconn);
-    }
+    } while (q_res->server_cursor_id != NULL);
 
     return SQL_SUCCESS;
 }
@@ -239,21 +247,29 @@ QResultClass *SendQueryGetResult(StatementClass *stmt, BOOL commit) {
     QResultClass *res = QR_Constructor();
     if (res == NULL)
         return NULL;
+    QR_set_server_cursor_id(res, NULL);
 
     // Send command
     ConnectionClass *conn = SC_get_conn(stmt);
-    if (ESExecDirect(conn->esconn, stmt->statement, conn->connInfo.fetch_size) != 0) {
+    if (ESExecDirect(conn->esconn, stmt->statement, conn->connInfo.fetch_size)
+        != 0) {
         QR_Destructor(res);
         return NULL;
     }
     res->rstatus = PORES_COMMAND_OK;
 
     // Get ESResult
-    ESResult *es_res = ESGetResult(conn->esconn);
+    MYLOG(ES_WARNING, "%s\n", "SendQueryGetResult ESPeekResult");
+    ESResult *es_res =
+        commit ? ESGetResult(conn->esconn) : ESPeekResult(conn->esconn);
     if (es_res == NULL) {
+        MYLOG(ES_WARNING, "es_res is NULL\n");
         QR_Destructor(res);
         return NULL;
     }
+    MYLOG(ES_WARNING, "es_res is not NULL\n");
+    MYLOG(ES_WARNING, "es_res schema size: %zd\n",
+          es_res->schema.get()->size());
 
     BOOL success =
         commit
@@ -262,9 +278,12 @@ QResultClass *SendQueryGetResult(StatementClass *stmt, BOOL commit) {
 
     // Convert result to QResultClass
     if (!success) {
+        MYLOG(ES_WARNING, "Not successful\n");
         QR_Destructor(res);
         res = NULL;
+        // return res;
     }
+    MYLOG(ES_WARNING, "Successful!\n");
 
     if (commit) {
         // Deallocate ESResult
@@ -274,6 +293,12 @@ QResultClass *SendQueryGetResult(StatementClass *stmt, BOOL commit) {
         // Set ESResult into connection class so it can be used later
         res->es_result = es_res;
     }
+
+    if (!es_res->cursor.empty()) {
+        // Set cursor in QRes
+        res->server_cursor_id = strdup(es_res->cursor.c_str());
+    }
+
     return res;
 }
 
@@ -293,6 +318,7 @@ RETCODE AssignResult(StatementClass *stmt) {
         QR_Destructor(res);
         return SQL_ERROR;
     }
+    MYLOG(ES_WARNING, "%s\n", "AssignResult GetNextResultSet");
     GetNextResultSet(stmt);
 
     // Deallocate and return result

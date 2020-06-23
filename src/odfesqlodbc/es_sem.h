@@ -13,31 +13,31 @@
  * permissions and limitations under the License.
  *
  */
-#ifndef ES_RESULT_QUEUE
-#define ES_RESULT_QUEUE
 
+#ifndef ES_SEMAPHORE
+#define ES_SEMAPHORE
+
+#ifdef WIN32
+#include <windows.h>
+#endif
 #include <mutex>
-#include <queue>
+#include <thread>
 
-#include "es_sem.h"
-
-struct ESResult;
-
-class ESResultQueue {
+class es_sem {
    public:
-    ESResultQueue(size_t capacity);
-    ~ESResultQueue();
+    es_sem(size_t initial_count, size_t capacity);
+    ~es_sem();
 
-    void clear();
-    bool pop(size_t timeout_ms, ESResult*& result);
-    bool peek(size_t timeout_ms, ESResult*& result);
-    bool push(size_t timeout_ms, ESResult* result);
+    void lock();
+    void release();
+    bool try_lock_for(size_t timeout_ms);
+    bool try_peek_for(size_t timeout_ms);
 
    private:
-    std::queue< ESResult* > m_queue;
-    std::mutex m_queue_mutex;
-    es_sem m_empty_slots;
-    es_sem m_full_slots;
+    size_t m_count;
+    const size_t m_maxCount;
+    std::mutex m_mutex;
+    std::condition_variable m_signal;
 };
 
 #endif

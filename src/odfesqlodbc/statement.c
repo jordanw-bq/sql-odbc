@@ -160,11 +160,13 @@ RETCODE SQL_API ESAPI_FreeStmt(HSTMT hstmt, SQLUSMALLINT fOption) {
     }
     SC_clear_error(stmt);
 
+    MYLOG(ES_WARNING, "fOption: %d\n", fOption);
     if (fOption == SQL_DROP) {
         ConnectionClass *conn = stmt->hdbc;
 
         // Clear queue in case it holds next pages of results
         ESClearQueue(conn->esconn);
+        MYLOG(ES_WARNING, "Cleared queue\n");
 
         /* Remove the statement from the connection's statement list */
         if (conn) {
@@ -179,8 +181,11 @@ RETCODE SQL_API ESAPI_FreeStmt(HSTMT hstmt, SQLUSMALLINT fOption) {
             if (conn->unnamed_prepared_stmt == stmt)
                 conn->unnamed_prepared_stmt = NULL;
 
+            MYLOG(ES_WARNING, "xxx Getting result\n");
             res = SC_get_Result(stmt);
+            MYLOG(ES_WARNING, "xxx QR Destructor\n");
             QR_Destructor(res);
+            MYLOG(ES_WARNING, "xxx Done destructor\n");
             SC_init_Result(stmt);
             if (!CC_remove_statement(conn, stmt)) {
                 SC_set_error(stmt, STMT_SEQUENCE_ERROR,

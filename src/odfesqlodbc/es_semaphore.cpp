@@ -18,12 +18,12 @@
 
 #include <chrono>
 
-es_semaphore::es_semaphore(size_t capacity)
+es_semaphore::es_semaphore(size_t initial_count, size_t capacity)
     :
 #if defined(WIN32) || defined(WIN64)
       m_semaphore(CreateSemaphore(NULL, capacity, capacity, NULL))
 #else
-      m_semaphore(capacity)
+      m_semaphore(initial_count, capacity)
 #endif
 {
 }
@@ -38,7 +38,9 @@ void es_semaphore::lock() {
 #if defined(WIN32) || defined(WIN64)
     WaitForSingleObject(m_semaphore, INFINITE);
 #else
-    m_semaphore.lock();
+    std::unique_lock< std::mutex > lock(m_mutex);
+    m_semaphore.WaitOne();
+    m_signal.wait(lock);
 #endif
 }
 
@@ -46,7 +48,9 @@ void es_semaphore::release() {
 #if defined(WIN32) || defined(WIN64)
     ReleaseSemaphore(m_semaphore, 1, NULL);
 #else
-    m_semaphore.release();
+    std::unique_lock< std::mutex > lock(m_mutex);
+    m_semaphore.Release();
+    m_signal.notify_one();
 #endif
 }
 
@@ -54,6 +58,9 @@ bool es_semaphore::try_lock_for(size_t timeout_ms) {
 #if defined(WIN32) || defined(WIN64)
     return WaitForSingleObject(m_semaphore, timeout_ms) == WAIT_OBJECT_0;
 #else
-    return m_semaphore.try_lock_for(std::chrono::milliseconds(timeout_ms));
+    std::unique_lock< std::mutex > lock(m_mutex);
+    return m_signal.wait_for(lock, std::chrono::milliseconds(timeout_ms),
+                             [] { return false; });
+    // return m_semaphore.try_lock_for(std::chrono::milliseconds(timeout_ms));
 #endif
 }

@@ -41,9 +41,13 @@ class TestSQLExecute : public testing::Test {
     }
 
     void TearDown() {
+        printf("Closing cursor!\n");
         CloseCursor(&m_hstmt, true, true);
+        printf("FreeHandle STMT!\n");
         SQLFreeHandle(SQL_HANDLE_STMT, m_hstmt);
+        printf("Disconnect!\n");
         SQLDisconnect(m_conn);
+        printf("FreeHandle ENV!\n");
         SQLFreeHandle(SQL_HANDLE_ENV, m_env);
     }
 
@@ -69,9 +73,13 @@ class TestSQLPrepare : public testing::Test {
     }
 
     void TearDown() {
+        printf("Closing cursor!\n");
         CloseCursor(&m_hstmt, true, true);
+        printf("FreeHandle STMT!\n");
         SQLFreeHandle(SQL_HANDLE_STMT, m_hstmt);
+        printf("Disconnect!\n");
         SQLDisconnect(m_conn);
+        printf("FreeHandle ENV!\n");
         SQLFreeHandle(SQL_HANDLE_ENV, m_env);
     }
 
@@ -228,27 +236,38 @@ TEST_F(TestSQLExecute, NoPrepareCallError) {
 }
 
 TEST_F(TestSQLExecute, Success) {
+    printf("SQLPrepare\n");
     SQLRETURN ret = SQLPrepare(m_hstmt, (SQLTCHAR*)m_query.c_str(), SQL_NTS);
+    printf("LogDiag\n");
     LogAnyDiagnostics(SQL_HANDLE_STMT, m_hstmt, ret);
+    printf("Checking ret\n");
     ASSERT_EQ(SQL_SUCCESS, ret);
+    printf("SQLExecute\n");
     ret = SQLExecute(m_hstmt);
+    printf("Checking ret\n");
     EXPECT_EQ(SQL_SUCCESS, ret);
+    printf("LogDiag\n");
     LogAnyDiagnostics(SQL_HANDLE_STMT, m_hstmt, ret);
 }
 
 TEST_F(TestSQLExecute, ResetPrepareError) {
+    printf("SQLPrepare\n");
     SQLRETURN ret = SQLPrepare(m_hstmt, (SQLTCHAR*)m_query.c_str(), SQL_NTS);
     LogAnyDiagnostics(SQL_HANDLE_STMT, m_hstmt, ret);
     ASSERT_EQ(SQL_SUCCESS, ret);
+    printf("SQLPrepare reset\n");
     ret = SQLPrepare(m_hstmt, NULL, SQL_NTS);
     LogAnyDiagnostics(SQL_HANDLE_STMT, m_hstmt, ret);
     ASSERT_EQ(SQL_ERROR, ret);
+    printf("SQLExecute\n");
     ret = SQLExecute(m_hstmt);
     EXPECT_EQ(SQL_ERROR, ret);
     LogAnyDiagnostics(SQL_HANDLE_STMT, m_hstmt, ret);
+    printf("Done!\n");
 }
 
 TEST_F(TestSQLPrepare, Success) {
+    printf("SQLPrepare\n");
     SQLRETURN ret = SQLPrepare(m_hstmt, (SQLTCHAR*)m_query.c_str(), SQL_NTS);
     EXPECT_EQ(SQL_SUCCESS, ret);
     LogAnyDiagnostics(SQL_HANDLE_STMT, m_hstmt, ret);
@@ -331,7 +350,8 @@ TEST_F(TestSQLCancel, NULLHandle) {
     EXPECT_EQ(ret_exec, SQL_INVALID_HANDLE);
 }
 
-// This test will fail because we are not cancelling in flight queries at this time. 
+// This test will fail because we are not cancelling in flight queries at this
+// time.
 #if 0
 TEST_F(TestSQLCancel, QueryInProgress) {
     // Create lambda thread
@@ -384,16 +404,16 @@ int main(int argc, char** argv) {
     // Enable malloc logging for detecting memory leaks.
     system("export MallocStackLogging=1");
 #endif
-    testing::internal::CaptureStdout();
+    // testing::internal::CaptureStdout();
     ::testing::InitGoogleTest(&argc, argv);
 
     int failures = RUN_ALL_TESTS();
 
-    std::string output = testing::internal::GetCapturedStdout();
-    std::cout << output << std::endl;
-    std::cout << (failures ? "Not all tests passed." : "All tests passed")
-              << std::endl;
-    WriteFileIfSpecified(argv, argv + argc, "-fout", output);
+    // std::string output = testing::internal::GetCapturedStdout();
+    // std::cout << output << std::endl;
+    // std::cout << (failures ? "Not all tests passed." : "All tests passed")
+    //   << std::endl;
+    // WriteFileIfSpecified(argv, argv + argc, "-fout", output);
 
 #ifdef __APPLE__
     // Disable malloc logging and report memory leaks

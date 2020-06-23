@@ -60,8 +60,9 @@ class ESCommunication {
     void DropDBConnection();
     void LogMsg(ESLogLevel level, const char* msg);
     int ExecDirect(const char* query, const char* fetch_size_);
-    void SendCursorQueries(const char* cursor);
+    void SendCursorQueries(std::string cursor);
     ESResult* PopResult();
+    ESResult* PeekResult();
     std::string GetClientEncoding();
     bool SetClientEncoding(std::string& encoding);
     bool IsSQLPluginInstalled(const std::string& plugin_response);
@@ -81,8 +82,8 @@ class ESCommunication {
     bool CheckConnectionOptions();
     bool EstablishConnection();
     void ConstructESResult(ESResult& result);
-    void GetJsonSchema(ESResult& es_result);
-    void PrepareCursorResult(ESResult& es_result);
+    rabbit::document* ParseQueryResult(ESResult& es_result);
+    rabbit::document* ParseCursorPageResult(ESResult& es_result);
 
     // TODO #35 - Go through and add error messages on exit conditions
     std::string m_error_message;
@@ -95,6 +96,7 @@ class ESCommunication {
     std::string m_client_encoding;
     Aws::SDKOptions m_options;
     std::string m_response_str;
+    // std::string m_cursor;
     std::shared_ptr< Aws::Http::HttpClient > m_http_client;
 };
 

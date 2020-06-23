@@ -17,26 +17,30 @@
 #define ES_SEMAPHORE
 
 #ifdef WIN32
-  #include <windows.h>
-#else 
-  #include <semaphore>
+#include <windows.h>
+#else
+#include <aws/core/utils/threading/Semaphore.h>
 #endif
+#include <mutex>
+#include <thread>
 
 class es_semaphore {
-    public:
-        es_semaphore(size_t capacity);
-        ~es_semaphore();
+   public:
+    es_semaphore(size_t initial_count, size_t capacity);
+    ~es_semaphore();
 
-        void lock();
-        void release();
-        bool try_lock_for(size_t timeout_ms);
+    void lock();
+    void release();
+    bool try_lock_for(size_t timeout_ms);
 
-    private:
+   private:
 #ifdef WIN32
-        HANDLE m_semaphore;
+    HANDLE m_semaphore;
 #else
-        std::counting_semaphore m_semaphore;
+    Aws::Utils::Threading::Semaphore m_semaphore;
 #endif
+    std::mutex m_mutex;
+    std::condition_variable m_signal;
 };
 
 #endif

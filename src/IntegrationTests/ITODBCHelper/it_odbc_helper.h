@@ -45,8 +45,12 @@ std::vector< std::pair< std::wstring, std::wstring > > conn_str_pair = {
     {L"auth", L"BASIC"},
     {L"useSSL", (use_ssl ? L"1" : L"0")},
     {L"hostnameVerification", L"0"},
-    {L"logLevel", L"0"},
+    {L"logLevel", L"5"},
+#ifdef WIN32
     {L"logOutput", L"C:\\"},
+#else
+    {L"logOutput", L"/tmp/pag_logs/"},
+#endif
     {L"responseTimeout", L"10"},
     {L"fetchSize", L"0"}};
 

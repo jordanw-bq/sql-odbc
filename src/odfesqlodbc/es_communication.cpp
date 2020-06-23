@@ -102,12 +102,17 @@ void ESCommunication::AwsHttpResponseToString(
     output.assign(buf.data(), avail);
 }
 
-void ESCommunication::PrepareCursorResult(ESResult& es_result) {
+rabbit::document* ESCommunication::ParseCursorPageResult(ESResult& es_result) {
     // Prepare document and validate result
     try {
         LogMsg(ES_DEBUG, "Parsing result JSON with cursor.");
-        es_result.es_result_doc.parse(es_result.result_json,
-                                      CURSOR_JSON_SCHEMA);
+        rabbit::document* result_doc = NULL;
+        result_doc->parse(es_result.result_json, CURSOR_JSON_SCHEMA);
+        return result_doc;
+        // if (es_re)
+
+        // es_result.es_result_doc.parse(es_result.result_json,
+        //                               CURSOR_JSON_SCHEMA);
     } catch (const rabbit::parse_error& e) {
         // The exception rabbit gives is quite useless - providing the json
         // will aid debugging for users
@@ -118,11 +123,16 @@ void ESCommunication::PrepareCursorResult(ESResult& es_result) {
     }
 }
 
-void ESCommunication::GetJsonSchema(ESResult& es_result) {
+rabbit::document* ESCommunication::ParseQueryResult(ESResult& es_result) {
     // Prepare document and validate schema
     try {
         LogMsg(ES_DEBUG, "Parsing result JSON with schema.");
-        es_result.es_result_doc.parse(es_result.result_json, JSON_SCHEMA);
+        // rabbit::document* result_doc = NULL;
+        rabbit::document* result_doc = new rabbit::document();
+        result_doc->parse(es_result.result_json, JSON_SCHEMA);
+        return result_doc;
+
+        // es_result.es_result_doc.parse(es_result.result_json, JSON_SCHEMA);
     } catch (const rabbit::parse_error& e) {
         // The exception rabbit gives is quite useless - providing the json
         // will aid debugging for users
@@ -142,7 +152,7 @@ ESCommunication::ESCommunication()
       m_valid_connection_options(false),
       m_error_message(""),
       m_client_encoding(m_supported_client_encodings[0]),
-      m_result_queue(3)
+      m_result_queue(10)
 #ifdef __APPLE__
 #pragma clang diagnostic pop
 #endif  // __APPLE__
@@ -264,6 +274,12 @@ std::shared_ptr< Aws::Http::HttpResponse > ESCommunication::IssueRequest(
     const std::string& endpoint, const Aws::Http::HttpMethod request_type,
     const std::string& content_type, const std::string& query,
     const std::string& fetch_size, const std::string& cursor) {
+    std::string log_msg = "======= IssueRequest =====\n--- Endpoint:\t"
+                          + endpoint + "\n-- Query: " + query
+                          + "\n-- Fetch size: " + fetch_size
+                          + "\n-- Cursor: " + cursor;
+
+    MYLOG(ES_WARNING, "%s\n", log_msg.c_str());
     // Generate http request
     std::shared_ptr< Aws::Http::HttpRequest > request =
         Aws::Http::CreateHttpRequest(
@@ -471,30 +487,42 @@ int ESCommunication::ExecDirect(const char* query, const char* fetch_size_) {
         return -1;
     }
 
+    MYLOG(ES_WARNING, "%s\n", "ESCommExecDirect queue push+");
     m_result_queue.push(QUEUE_TIMEOUT, result);
     // while (!m_result_queue.push(QUEUE_TIMEOUT, result)) {
-    //     if (m_status == ConnStatusType::CONNECTION_BAD) {
-    //         break;
-    //     }
-    //     // TODO: Check if we should still attempt to be adding a result.
+    // if (m_status == ConnStatusType::CONNECTION_BAD) {
+    // break;
+    // }
+    // MYLOG(ES_WARNING, "%s\n", "ESCommExecDirect queue push+");
+    // TODO: Check if we should still attempt to be adding a result.
     // }
 
+    // std::string cursor_id = result->es_result_doc["cursor"].as_string();
     if (!result->cursor.empty()) {
         // If response has cursor, this thread will retrives more results pages
         // asynchronously.
-        auto send_cursor_queries = std::async(std::launch::async, [&]() {
-            SendCursorQueries(result->cursor.c_str());
-        });
+        LogMsg(ES_WARNING, "Cursor id:");
+        LogMsg(ES_WARNING, result->cursor.c_str());
+        LogMsg(ES_WARNING, "aaaa Starting thread cursor queries");
+        // std::thread send_cursor_queries(this->SendCursorQueries, cursor_id);
+        std::thread send_cursor_queries(
+            [=](std::string cursor) {
+                // TODO: look into race condition for "result"
+                LogMsg(ES_WARNING, "NEW THREAD (send_cursor_queries)");
+                LogMsg(ES_WARNING, "NEW cursor_id:");
+                LogMsg(ES_WARNING, cursor.c_str());
+                SendCursorQueries(cursor);
+            },
+            result->cursor);
+        send_cursor_queries.detach();
+        LogMsg(ES_WARNING, "aaaa Detached cursor thread");
     }
     return 0;
 }
 
-void ESCommunication::SendCursorQueries(const char* _cursor) {
-    if (_cursor == NULL) {
-        return;
-    }
+void ESCommunication::SendCursorQueries(std::string cursor) {
+    LogMsg(ES_WARNING, "!=!=!SendCursorQueries");
     try {
-        std::string cursor(_cursor);
         while (!cursor.empty()) {
             std::shared_ptr< Aws::Http::HttpResponse > response = IssueRequest(
                 SQL_ENDPOINT_FORMAT_JDBC, Aws::Http::HttpMethod::HTTP_POST,
@@ -506,31 +534,35 @@ void ESCommunication::SendCursorQueries(const char* _cursor) {
                 LogMsg(ES_ERROR, m_error_message.c_str());
                 return;
             }
+
             std::unique_ptr< ESResult > result = std::make_unique< ESResult >();
             AwsHttpResponseToString(response, result->result_json);
-            PrepareCursorResult(*result);
 
-            if (result->es_result_doc.has("cursor")) {
-                cursor = result->es_result_doc["cursor"].as_string();
-                result->cursor = result->es_result_doc["cursor"].as_string();
+            rabbit::document* doc = ParseCursorPageResult(*result);
+            if (doc->has("cursor")) {
+                // cursor = doc["cursor"].as_string();
+                cursor = doc->at("cursor").as_string();
+                result->cursor = cursor;
             } else {
                 SendCloseCursorRequest(cursor);
                 cursor.clear();
             }
 
-            while (!m_result_queue.push(QUEUE_TIMEOUT, result.release())) {
-                if (m_status == CONNECTION_BAD) {
-                    break;
-                }
-                // TODO: Check if we should still attempt to be adding a result.
-            }
+            m_result_queue.push(QUEUE_TIMEOUT, result.release());
+
+            // while (!m_result_queue.push(QUEUE_TIMEOUT, result.release())) {
+            // if (m_status == CONNECTION_BAD) {
+            // break;
+            // }
+            // TODO: Check if we should still attempt to be adding a result.
+            // }
         }
     } catch (std::runtime_error& e) {
         m_error_message =
             "Received runtime exception: " + std::string(e.what());
         LogMsg(ES_ERROR, m_error_message.c_str());
     }
-    m_status = CONNECTION_DONE_CURSOR;
+    // m_status = CONNECTION_DONE_CURSOR;
 }
 
 void ESCommunication::SendCloseCursorRequest(const std::string& cursor) {
@@ -548,32 +580,54 @@ void ESCommunication::SendCloseCursorRequest(const std::string& cursor) {
 }
 
 void ESCommunication::ClearQueue() {
+    LogMsg(ES_WARNING, "Calling ClearQueue");
     m_result_queue.clear();
 }
 
+const rabbit::array GetConstRabbitArray(rabbit::array& array) {
+    return array;
+}
+
 void ESCommunication::ConstructESResult(ESResult& result) {
-    GetJsonSchema(result);
-    rabbit::array schema_array = result.es_result_doc["schema"];
-    for (rabbit::array::iterator it = schema_array.begin();
-         it != schema_array.end(); ++it) {
-        std::string column_name = it->at("name").as_string();
+    try {
+        rabbit::document doc;
+        LogMsg(ES_DEBUG, "Parsing result JSON with schema.");
+        doc.parse(result.result_json, JSON_SCHEMA);
 
-        ColumnInfo col_info;
-        col_info.field_name = column_name;
-        col_info.type_oid = KEYWORD_TYPE_OID;
-        col_info.type_size = KEYWORD_TYPE_SIZE;
-        col_info.display_size = KEYWORD_DISPLAY_SIZE;
-        col_info.length_of_str = KEYWORD_TYPE_SIZE;
-        col_info.relation_id = 0;
-        col_info.attribute_number = 0;
+        rabbit::array schema_array = doc.at("schema");
+        rabbit::array datarows_array = doc.at("datarows");
+        for (rabbit::array::iterator it = schema_array.begin();
+             it != schema_array.end(); ++it) {
+            std::string column_name = it->at("name").as_string();
 
-        result.column_info.push_back(col_info);
+            ColumnInfo col_info;
+            col_info.field_name = column_name;
+            col_info.type_oid = KEYWORD_TYPE_OID;
+            col_info.type_size = KEYWORD_TYPE_SIZE;
+            col_info.display_size = KEYWORD_DISPLAY_SIZE;
+            col_info.length_of_str = KEYWORD_TYPE_SIZE;
+            col_info.relation_id = 0;
+            col_info.attribute_number = 0;
+
+            result.column_info.push_back(col_info);
+        }
+        if (doc.has("cursor")) {
+            result.cursor = doc.at("cursor").as_string();
+        }
+        result.command_type = "SELECT";
+        result.num_fields = (uint16_t)schema_array.size();
+        result.schema = std::make_unique< rabbit::array >(
+            new rabbit::array(GetConstRabbitArray(schema_array)));
+        result.datarows = std::make_unique< rabbit::array >(
+            new rabbit::array(GetConstRabbitArray(datarows_array)));
+    } catch (const rabbit::parse_error& e) {
+        // The exception rabbit gives is quite useless - providing the json
+        // will aid debugging for users
+        std::string str = "Exception obtained '" + std::string(e.what())
+                          + "' when parsing json string '" + result.result_json
+                          + "'.";
+        throw std::runtime_error(str.c_str());
     }
-    if (result.es_result_doc.has("cursor")) {
-        result.cursor = result.es_result_doc["cursor"].as_string();
-    }
-    result.command_type = "SELECT";
-    result.num_fields = (uint16_t)schema_array.size();
 }
 
 inline void ESCommunication::LogMsg(ESLogLevel level, const char* msg) {
@@ -592,14 +646,31 @@ inline void ESCommunication::LogMsg(ESLogLevel level, const char* msg) {
 ESResult* ESCommunication::PopResult() {
     LogMsg(ES_WARNING, "Popping result\n");
     ESResult* result = NULL;
-    while (!m_result_queue.pop(QUEUE_TIMEOUT, result)) {
-        if (m_status == CONNECTION_BAD || m_status == CONNECTION_DONE_CURSOR) {
-            break;
-        }
-        // TODO: Check if we should still attempt to be popping a result.
-        // LogMsg(ES_WARNING, "Timed out attempting to get a result; returning
-        // null result.");
-    }
+    m_result_queue.pop(QUEUE_TIMEOUT, result);
+    // while (!m_result_queue.pop(QUEUE_TIMEOUT, result)) {
+    // if (m_status == CONNECTION_BAD || m_status == CONNECTION_DONE_CURSOR)
+    // { break;
+    // }
+    // TODO: Check if we should still attempt to be popping a result.
+    // LogMsg(ES_WARNING, "Timed out attempting to get a result; returning
+    // null result.");
+    // }
+
+    return result;
+}
+
+ESResult* ESCommunication::PeekResult() {
+    LogMsg(ES_WARNING, "Peeking result\n");
+    ESResult* result = NULL;
+    m_result_queue.peek(QUEUE_TIMEOUT, result);
+    // while (!m_result_queue.pop(QUEUE_TIMEOUT, result)) {
+    // if (m_status == CONNECTION_BAD || m_status == CONNECTION_DONE_CURSOR)
+    // { break;
+    // }
+    // TODO: Check if we should still attempt to be popping a result.
+    // LogMsg(ES_WARNING, "Timed out attempting to get a result; returning
+    // null result.");
+    // }
 
     return result;
 }

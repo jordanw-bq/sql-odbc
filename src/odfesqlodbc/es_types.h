@@ -305,12 +305,18 @@ typedef struct ESResult {
     std::string cursor;
     std::string result_json;
     std::string command_type;  // SELECT / FETCH / etc
-    rabbit::document es_result_doc;
+    std::unique_ptr< rabbit::array > datarows;
+    std::unique_ptr< rabbit::array > schema;
+    // rabbit::document es_result_doc;
     ESResult() {
         ref_count = 0;
         num_fields = 0;
         result_json = "";
         command_type = "";
+    }
+    ~ESResult() {
+        datarows.release();
+        schema.release();
     }
 } ESResult;
 
